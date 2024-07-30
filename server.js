@@ -6,7 +6,7 @@ const port = 3000;
 
 // MongoDB connection URI and Database Name
 const uri = 'mongodb://localhost:27017/';
-const dbName = 'spri4';
+const dbName = 'final chatbot';
 
 // Middleware to parse JSON bodies
 app.use(express.json());
