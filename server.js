@@ -1,68 +1,69 @@
 const express = require('express');
-const path = require('path');
-const { MongoClient } = require('mongodb');
+const bodyParser = require('body-parser');
+const axios = require('axios');
+const mongoose = require('mongoose');
 const app = express();
 const port = 3000;
 
-// MongoDB connection URI and Database Name
-const uri = 'mongodb://localhost:27017/';
-const dbName = 'final chatbot';
+// Replace with your actual OpenAI API key
+const OPENAI_API_KEY = 'AIzaSyC49z_LTN61oe8CqcJTHgUbsvRKpZHT5d8';
 
-// Middleware to parse JSON bodies
-app.use(express.json());
+// MongoDB connection string
+const MONGO_URI = 'mongodb://localhost:27017/finalDB';
 
-// Serve static files from the "public" directory
-app.use(express.static(path.join(__dirname, 'public')));
+// MongoDB schema and model
+const chatSchema = new mongoose.Schema({
+    userMessage: String,
+    botMessage: String,
+    timestamp: { type: Date, default: Date.now }
+});
 
-async function main() {
-    const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+const Chat = mongoose.model('Chat', chatSchema);
+
+// Connect to MongoDB
+mongoose.connect(MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+}).then(() => {
+    console.log('Connected to MongoDB');
+}).catch((error) => {
+    console.error('Error connecting to MongoDB:', error);
+});
+
+app.use(bodyParser.json());
+app.use(express.static('public'));
+
+app.post('/api/message', async (req, res) => {
+    const userMessage = req.body.message;
+    console.log('User message:', userMessage);
 
     try {
-        await client.connect();
-        console.log('Connected to MongoDB');
-        const db = client.db(dbName);
-        const messagesCollection = db.collection('messages');
-
-        // Example endpoint to handle user messages
-        app.post('/api/message', async (req, res) => {
-            const userMessage = req.body.message;
-            console.log('Received message:', userMessage);
-
-            // Simulate a response from the Gemini API (Replace with actual API call)
-            const botResponse = process.env.Gemini_API_KEY;
-            console.log('Sending response:', botResponse);
-
-            // Store the message and response in the database
-            await messagesCollection.insertOne({
-                userMessage: userMessage,
-                botResponse: botResponse,
-                timestamp: new Date()
-            });
-
-            res.json({ response: botResponse });
-        });
-
-        // Endpoint to fetch chat history
-        app.get('/api/messages', async (req, res) => {
-            try {
-                const messages = await messagesCollection.find({}).toArray();
-                res.json(messages);
-            } catch (e) {
-                console.error(e);
-                res.status(500).send('Error fetching messages');
+        const response = await axios.post('https://api.openai.com/v1/engines/gpt-4/completions', {
+            prompt: userMessage,
+            max_tokens: 150
+        }, {
+            headers: {
+                'Authorization': `Bearer ${OPENAI_API_KEY}`
             }
         });
 
-        // Start the server
-        app.listen(port, () => {
-            console.log(`Server is running at http://localhost:${port}`);
-        });
-    } catch (e) {
-        console.error(e);
-    }
-}
+        const botMessage = response.data.choices[0].text.trim();
+        console.log('API response:', botMessage);
 
-main().catch(console.error);
+        // Save the chat to MongoDB
+        const chat = new Chat({ userMessage, botMessage });
+        await chat.save();
+
+        res.json({ message: botMessage });
+    } catch (error) {
+        console.error('Error communicating with OpenAI API:', error);
+        res.json({ message: "Sorry, there was an error processing your request." });
+    }
+});
+
+app.listen(port, () => {
+    console.log(`Server is running on http://localhost:${port}`);
+});
 
 
 
